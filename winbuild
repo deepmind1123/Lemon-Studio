@@ -1,0 +1,54 @@
+
+name: Build Lemon Studio Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Configure LLVM
+        shell: pwsh
+        run: |
+          $llvm = "C:\Program Files\LLVM"
+          if (!(Test-Path "$llvm\bin\libclang.dll")) {
+            choco install llvm -y --no-progress
+          }
+          $llvm = "C:\Program Files\LLVM"
+          "LIBCLANG_PATH=$llvm\bin" >> $env:GITHUB_ENV
+          "$llvm\bin" >> $env:GITHUB_PATH
+
+      - name: Compile Release
+        shell: pwsh
+        env:
+          OPENSTUDIO_NO_PLUGIN_BUILD: "1"
+        run: |
+          cargo build -p os-app --release --locked
+
+      - name: Package executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist
+          Copy-Item target/release/lemonstudio.exe dist/
+          Copy-Item LICENSE dist/
+          Compress-Archive -Path dist/* `
+            -DestinationPath LemonStudio-Windows-x64.zip
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: LemonStudio-Windows-x64
+          path: LemonStudio-Windows-x64.zip
+          retention-days: 30
